@@ -1,13 +1,15 @@
 %impedance reconstruction for IShTAR
 
 clear variables
+close all
 
 FS=24;
 model='resonator'
 
+%% Input
 Ctuning=1e-9;
 nct=100;
-Cts=linspace(100e-12,300e-12,nct);
+Cts=linspace(100e-12,500e-12,nct);    %Range of tuning capacitance
 Pnom=5e3;
 Rnom=50;
 In=sqrt(Pnom/Rnom);
@@ -15,46 +17,41 @@ Vn=sqrt(Pnom*Rnom);
 
 %Computing line parameters
 f=50e6;
+ro_Cu = 1.72e-8;    %Resistivity of Copper
+ro_SS = 6.9e-7;     %Resistivity Stainless Steel 304
+ro_Al = 2.62e-8;    %Resistivity Aluminum
 ro=1.68e-8;
 tand=1e-6;
 
-%250mm out diameter
-b250=230e-3;
-a250=100e-3;
-d250=0.1;
-[R250,G250,L250,C250,Z0250] = trasmpar(1,1,tand,ro,b250,a250,f);
-R250=R250*d250;
-L250=L250*d250;
-C250=C250*d250;
+%230mm out diameter SPINNER
+b230=230e-3;        %Outer diameter [m]
+a230=100e-3;        %Inner diameter [m]
+ro_CuAl = roeq(ro_Cu, ro_Al, a230, b230);
+[R230,G230,L230,C230,Z0230] = trasmpar(1,1,tand,ro_CuAl,b230,a230,f);
 
-%150mm out diameter
+%150mm out diameter SPINNER
 b150=150e-3;
 a150=12e-3;
-[R150,G150,L150,C150,Z0150] = trasmpar(1,1,tand,ro,b150,a150,f);
-% R150=R150*d150;
-% L150=L150*d150;
-% C150=C150*d150;
+ro_CuAlS = roeq(ro_Cu, ro_Al, a150, b150);
+[R150S,G150S,L150S,C150S,Z0150S] = trasmpar(1,1,tand,ro_CuAlS,b150,a150,f);
 
-%feedthorugh 1:
+%150mm out diameter STAINLESS STEEL
+b150=150e-3;
+a150=12e-3;
+ro_CuSS = roeq(ro_Cu, ro_SS, a150, b150);
+[R150,G150,L150,C150,Z0150] = trasmpar(1,1,tand,ro_CuSS,b150,a150,f);
+
+%Alumina feedthrough:
 epsR1=9.8;
-df1=0.02;
-[Rf1,Gf1,Lf1,Cf1,Z0f1] = trasmpar(epsR1,1,tand,ro,b150,a150,f);
-Rf1=Rf1*df1;
-Lf1=Lf1*df1;
-Cf1=Cf1*df1;
+[Rf1,Gf1,Lf1,Cf1,Z0f1] = trasmpar(epsR1,1,tand,ro_CuSS,b150,a150,f);
 
-%feedtrough 2:
+%Quartz spacers:
 epsR2=3.78;
-df2=0.02;
-[Rf2,Gf2,Lf2,Cf2,Zf2] = trasmpar(epsR2,1,tand,ro,b150,a150,f);
-Rf2=Rf2*df2;
-Lf2=Lf2*df2;
-Cf2=Cf2*df2;
+[Rf2,Gf2,Lf2,Cf2,Zf2] = trasmpar(epsR2,1,tand,ro_CuSS,b150,a150,f);
 
 
 yout={};
 sps = power_analyze(model,'sort');
-%sps_ss = power_analyze('Red_FTEM_4RF_SSM_v1c','ss');
 spsd = power_analyze(model,'detailed');
 tic
 [A,B,C,D,~,~,~,~,~,~,~,~,~] =power_analyze(model);
@@ -77,10 +74,8 @@ nmp=length(em_p);
 V_p=V(:,fmode>=1e6 & fmode<100e6);
 II=eye(size(A));
 for i=1:nmp
-    Ztot(i)=C(stramp,:)/(1i*imag(em_p(i))*II-A)*B;
-    
+    Ztot(i)=C(stramp,:)/(1i*imag(em_p(i))*II-A)*B; 
 end
-
 
 % figure;
 % surf(abs(V_p),'edgecolor','none');
@@ -88,10 +83,8 @@ end
 
 %frequency response computation
 nfr=2e3;
-fr=linspace(43e6,48e6,nfr);
+fr=linspace(35e6,55e6,nfr);
 w=2*pi*fr;
-
-
 
 tic
 Zfr=zeros(nfr,nct);
@@ -104,7 +97,6 @@ itmax=100;
 dt=10e-6;
 G=zeros(nct,1);
 for j=1:nct
-    
     At(strct,:)=A(strct,:).*(Ctuning./Cts(j));
 %     Bt(strct)=B(strct).*(Ctuning./Cts(j));
 k=1e-6;
@@ -147,101 +139,101 @@ decim=10;
 cmap=jet(nct/decim);
 set(groot,'defaultAxesColorOrder',cmap);
 
-figure;
-subplot(2,1,1);
-loglog(fr,abs(Zfr(:,1:decim:end)),'linewidth',2);
-grid on;
-colormap(cmap);
-cc=colorbar('ticks',linspace(0,1,nct/decim+1),'ticklabels',[round(Cts(1:decim:end)*1e10)/10, round(Cts(end)*1e10)/10+0.1]);
-cc.Label.String = 'C_{tuning} [nF]';
-xlabel('Frequency [Hz]','fontsize',FS);
-ylabel('Impedance [\Omega]','fontsize',FS);
-title('Total Impedance');
-set(gca,'linewidth',2,'fontsize',FS);
-
-subplot(2,1,2);
-semilogx(fr,angle(Zfr(:,1:decim:end))*180/pi,'linewidth',2);
-grid on;
-colormap(cmap);
-cc=colorbar('ticks',linspace(0,1,nct/decim+1),'ticklabels',[round(Cts(1:decim:end)*1e10)/10, round(Cts(end)*1e10)/10+0.1]);
-cc.Label.String = 'C_{tuning} [nF]';
-xlabel('Frequency [Hz]','fontsize',FS);
-xlabel('Phase [°]','fontsize',FS);
-set(gca,'linewidth',2,'fontsize',FS);
-
 % figure;
 % subplot(2,1,1);
-% loglog(fr,abs(Vel),'linewidth',2);
+% loglog(fr,abs(Zfr(:,1:decim:end)),'linewidth',2);
 % grid on;
+% colormap(cmap);
+% cc=colorbar('ticks',linspace(0,1,nct/decim+1),'ticklabels',[round(Cts(1:decim:end)*1e10)/10, round(Cts(end)*1e10)/10+0.1]);
+% cc.Label.String = 'C_{tuning} [nF]';
 % xlabel('Frequency [Hz]','fontsize',FS);
 % ylabel('Impedance [\Omega]','fontsize',FS);
+% title('Total Impedance');
 % set(gca,'linewidth',2,'fontsize',FS);
 % 
 % subplot(2,1,2);
-% semilogx(fr,angle(Vel)*180/pi,'linewidth',2);
+% semilogx(fr,angle(Zfr(:,1:decim:end))*180/pi,'linewidth',2);
 % grid on;
+% colormap(cmap);
+% cc=colorbar('ticks',linspace(0,1,nct/decim+1),'ticklabels',[round(Cts(1:decim:end)*1e10)/10, round(Cts(end)*1e10)/10+0.1]);
+% cc.Label.String = 'C_{tuning} [nF]';
 % xlabel('Frequency [Hz]','fontsize',FS);
 % xlabel('Phase [°]','fontsize',FS);
 % set(gca,'linewidth',2,'fontsize',FS);
-
-figure;
-semilogx(fr,gain(:,1:decim:end),'linewidth',2);
-grid on;
-colormap(cmap);
-cc=colorbar('ticks',linspace(0,1,nct/decim+1),'ticklabels',[round(Cts(1:decim:end)*1e10)/10, round(Cts(end)*1e10)/10+0.1]);
-cc.Label.String = 'C_{tuning} [nF]';
-xlabel('Frequency [Hz]','fontsize',FS);
-ylabel('Gain [dB]','fontsize',FS);
-title('Ampli to Electrode Voltage Gain')
-set(gca,'linewidth',2,'fontsize',FS);
-
-set(groot,'defaultAxesColorOrder','remove');
-
-figure; 
-[C,h1]=contour(CtM,fM,gain,'ShowText','on','LineWidth',4); 
-grid on;
-clabel(C,h1,'fontsize',FS,'labelspacing',500);
-xlabel('C_{tuning}[F]','fontsize',FS);
-ylabel('Frequency [Hz]','fontsize',FS);
-legend('Gain [dB]');
-set(gca,'linewidth',2,'fontsize',FS);
-
-
-figure; 
-[C,h1]=contour(CtM,fM,abs(Velw),'ShowText','on','LineWidth',4); 
-clabel(C,h1,'fontsize',FS,'labelspacing',1000);
-xlabel('C_{tuning}[F]','fontsize',FS);
-ylabel('Frequency [Hz]','fontsize',FS);
-legend('Electrode Voltage [V]');
-set(gca,'linewidth',2,'fontsize',FS);
-grid on;
-
-figure; 
-[C,h1]=contour(CtM,fM,real(Sw),'ShowText','on','LineWidth',4); 
-grid on;
-clabel(C,h1,'fontsize',FS,'labelspacing',1000);
-xlabel('C_{tuning}[F]','fontsize',FS);
-ylabel('Frequency [Hz]','fontsize',FS);
-legend('RF active power [W]');
-set(gca,'linewidth',2,'fontsize',FS);
-
-figure;
-[C,h1]=contour(CtM,fM,abs(Zfr),0:5:100,'ShowText','on','LineWidth',4); 
-grid on;
-clabel(C,h1,'fontsize',FS,'labelspacing',1000);
-xlabel('C_{tuning}[F]','fontsize',FS);
-ylabel('Frequency [Hz]','fontsize',FS);
-legend('Impdeance [\Omega]');
-set(gca,'linewidth',2,'fontsize',FS);
-
-figure; 
-[C,h1]=contour(CtM,fM,angle(Zfr)*180/pi,'ShowText','on','LineWidth',4); 
-grid on;
-clabel(C,h1,'fontsize',FS,'labelspacing',1000);
-xlabel('C_{tuning}[F]','fontsize',FS);
-ylabel('Frequency [Hz]','fontsize',FS);
-legend('Phase [°]');
-set(gca,'linewidth',2,'fontsize',FS);
+% 
+% % figure;
+% % subplot(2,1,1);
+% % loglog(fr,abs(Vel),'linewidth',2);
+% % grid on;
+% % xlabel('Frequency [Hz]','fontsize',FS);
+% % ylabel('Impedance [\Omega]','fontsize',FS);
+% % set(gca,'linewidth',2,'fontsize',FS);
+% % 
+% % subplot(2,1,2);
+% % semilogx(fr,angle(Vel)*180/pi,'linewidth',2);
+% % grid on;
+% % xlabel('Frequency [Hz]','fontsize',FS);
+% % xlabel('Phase [°]','fontsize',FS);
+% % set(gca,'linewidth',2,'fontsize',FS);
+% 
+% figure;
+% semilogx(fr,gain(:,1:decim:end),'linewidth',2);
+% grid on;
+% colormap(cmap);
+% cc=colorbar('ticks',linspace(0,1,nct/decim+1),'ticklabels',[round(Cts(1:decim:end)*1e10)/10, round(Cts(end)*1e10)/10+0.1]);
+% cc.Label.String = 'C_{tuning} [nF]';
+% xlabel('Frequency [Hz]','fontsize',FS);
+% ylabel('Gain [dB]','fontsize',FS);
+% title('Ampli to Electrode Voltage Gain')
+% set(gca,'linewidth',2,'fontsize',FS);
+% 
+% set(groot,'defaultAxesColorOrder','remove');
+% 
+% figure; 
+% [C,h1]=contour(CtM,fM,gain,'ShowText','on','LineWidth',4); 
+% grid on;
+% clabel(C,h1,'fontsize',FS,'labelspacing',500);
+% xlabel('C_{tuning}[F]','fontsize',FS);
+% ylabel('Frequency [Hz]','fontsize',FS);
+% legend('Gain [dB]');
+% set(gca,'linewidth',2,'fontsize',FS);
+% 
+% 
+% figure; 
+% [C,h1]=contour(CtM,fM,abs(Velw),'ShowText','on','LineWidth',4); 
+% clabel(C,h1,'fontsize',FS,'labelspacing',1000);
+% xlabel('C_{tuning}[F]','fontsize',FS);
+% ylabel('Frequency [Hz]','fontsize',FS);
+% legend('Electrode Voltage [V]');
+% set(gca,'linewidth',2,'fontsize',FS);
+% grid on;
+% 
+% figure; 
+% [C,h1]=contour(CtM,fM,real(Sw),'ShowText','on','LineWidth',4); 
+% grid on;
+% clabel(C,h1,'fontsize',FS,'labelspacing',1000);
+% xlabel('C_{tuning}[F]','fontsize',FS);
+% ylabel('Frequency [Hz]','fontsize',FS);
+% legend('RF active power [W]');
+% set(gca,'linewidth',2,'fontsize',FS);
+% 
+% figure;
+% [C,h1]=contour(CtM,fM,abs(Zfr),0:5:100,'ShowText','on','LineWidth',4); 
+% grid on;
+% clabel(C,h1,'fontsize',FS,'labelspacing',1000);
+% xlabel('C_{tuning}[F]','fontsize',FS);
+% ylabel('Frequency [Hz]','fontsize',FS);
+% legend('Impdeance [\Omega]');
+% set(gca,'linewidth',2,'fontsize',FS);
+% 
+% figure; 
+% [C,h1]=contour(CtM,fM,angle(Zfr)*180/pi,'ShowText','on','LineWidth',4); 
+% grid on;
+% clabel(C,h1,'fontsize',FS,'labelspacing',1000);
+% xlabel('C_{tuning}[F]','fontsize',FS);
+% ylabel('Frequency [Hz]','fontsize',FS);
+% legend('Phase [°]');
+% set(gca,'linewidth',2,'fontsize',FS);
 
 
 
