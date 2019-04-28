@@ -1,21 +1,19 @@
-%impedance reconstruction for IShTAR
-
 clear variables
 close all
 
-FS=24;
+FS=12;
 model='resonator'
 
 %% Input
 Ctuning=1e-9;
 nct=100;
-Cts=linspace(100e-12,500e-12,nct);    %Range of tuning capacitance
+Cts=linspace(100e-12,300e-12,nct);    %Range of tuning capacitance
 Pnom=5e3;
 Rnom=50;
 In=sqrt(Pnom/Rnom);
 Vn=sqrt(Pnom*Rnom);
 
-%Computing line parameters
+%% Computing line parameters
 f=50e6;
 ro_Cu = 1.72e-8;    %Resistivity of Copper
 ro_SS = 6.9e-7;     %Resistivity Stainless Steel 304
@@ -42,14 +40,18 @@ ro_CuSS = roeq(ro_Cu, ro_SS, a150, b150);
 [R150,G150,L150,C150,Z0150] = trasmpar(1,1,tand,ro_CuSS,b150,a150,f);
 
 %Alumina feedthrough:
+b100=100e-3;
+a100=12e-3;
 epsR1=9.8;
-[Rf1,Gf1,Lf1,Cf1,Z0f1] = trasmpar(epsR1,1,tand,ro_CuSS,b150,a150,f);
+[Rf1,Gf1,Lf1,Cf1,Z0f1] = trasmpar(epsR1,1,tand,ro_CuSS,b100,a100,f);
 
 %Quartz spacers:
 epsR2=3.78;
 [Rf2,Gf2,Lf2,Cf2,Zf2] = trasmpar(epsR2,1,tand,ro_CuSS,b150,a150,f);
 
 
+%% Simulink model
+set_param('resonator/Arc','commented','on')
 yout={};
 sps = power_analyze(model,'sort');
 spsd = power_analyze(model,'detailed');
@@ -82,7 +84,7 @@ end
 % grid on;
 
 %frequency response computation
-nfr=2e3;
+nfr=5e3;
 fr=linspace(35e6,55e6,nfr);
 w=2*pi*fr;
 
@@ -132,12 +134,44 @@ Iw(abs(Zfr)>=50)=Zfr(abs(Zfr)>=50).\Vn;
 Iw(abs(Zfr)<50)=In;
 Velw=Vel.*Iw;
 
+
+
 [CtM,fM]=meshgrid(Cts,fr);
 gain=20*log10(abs(Vel./Zfr));
+[m,n]=max(abs(Velw));
+frq=imag(ee)/2/pi;
+[MV,IV]=max(m);
 
 decim=10;
 cmap=jet(nct/decim);
 set(groot,'defaultAxesColorOrder',cmap);
+
+%% Time domain Simulation
+Ctuning=Cts(IV);
+tsim=1/frq(IV)*1000;
+set_param('resonator/Arc','commented','off')
+set_param('resonator/Signal Generator','Frequency',num2str(frq(IV)))
+simOut=sim(model,'StopTime',num2str(tsim));
+
+%% Plots
+figure
+ax1=subplot(2,1,1);
+grid on
+hold on
+plot(frq/1e6,m/1e3,'g','linewidth',2)
+plot(frq(IV)/1e6,MV/1e3,'o','MarkerFaceColor','w','MarkerSize',10)
+ylabel('RMS Voltage [kV]','fontsize',FS);
+set(gca,'linewidth',1,'fontsize',FS,'Color','k','XColor','w','YColor','w');
+ax2=subplot(2,1,2);
+grid on
+hold on
+plot(frq/1e6,Cts/1e-12,'g','linewidth',2)
+plot(frq(IV)/1e6,Cts(IV)/1e-12,'o','MarkerFaceColor','w','MarkerSize',10)
+xlabel('Frequency [MHz]','fontsize',FS);
+ylabel('Tuning Capacitance [pF]','fontsize',FS);
+set(gca,'linewidth',1,'fontsize',FS,'Color','k','XColor','w','YColor','w');
+set(gcf,'color','k');
+linkaxes([ax1,ax2],'x')
 
 % figure;
 % subplot(2,1,1);
